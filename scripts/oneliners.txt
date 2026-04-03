@@ -1,0 +1,24 @@
+# Show member ip:ports for loadbalancer
+$ LB_ID="<lb-id>"; openstack loadbalancer pool list --loadbalancer "$LB_ID" -f value -c id | while read -r pool; do openstack loadbalancer member list "$pool" -f value -c address -c protocol_port | awk '{print $1 ":" $2}'; done | sort -u
+
+# Finds member ip's and the vm's they relate to
+LB_ID="<lb-id>"; PROJECT_ID="<project-id>"; SERVER_FILE=$(mktemp); openstack server list --project "$PROJECT_ID" --long -f json > "$SERVER_FILE"; for ip in $(openstack loadbalancer pool list --loadbalancer "$LB_ID" -f value -c id | while read -r pool; do openstack loadbalancer member list "$pool" -f value -c address; done | sort -u); do echo "=== $ip ==="; python3 - "$ip" "$SERVER_FILE" <<'PY'
+import json, sys
+ip = sys.argv[1]
+path = sys.argv[2]
+rows = json.load(open(path))
+found = False
+for row in rows:
+    nets = row.get("Networks", {})
+    if isinstance(nets, str):
+        continue
+    for net, ips in nets.items():
+        if ip in ips:
+            print(f"{row.get('ID')} {row.get('Name')} {net} {ip}")
+            found = True
+if not found:
+    print("NO SERVER MATCH")
+PY
+echo; done; rm -f "$SERVER_FILE"
+
+
